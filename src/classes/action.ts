@@ -298,6 +298,7 @@ export class KaminoAction {
       kaminoObligation = obligation;
     } else {
       const obligationAddress = obligation.toPda(kaminoMarket.getAddress(), owner);
+      console.log("Obligation address: ", obligationAddress.toBase58());
       kaminoObligation = await KaminoObligation.load(kaminoMarket, obligationAddress);
     }
     if (kaminoObligation !== null) {

@@ -12,7 +12,19 @@ import {
 import { fuzzyEqual } from '../utils';
 
 export const toJson = (object: any): string => {
-  return JSON.stringify(object, null, 2);
+  return JSON.stringify(
+    object,
+    (key, value) => {
+      if (key === "connection" || key.toLocaleLowerCase().includes("padding")) return undefined
+      if (typeof value === "bigint"){
+        value = value.toString()
+      } else if(Array.isArray(value) && (value.length === 0 || typeof value[0] !== "object")){
+        return JSON.stringify(value, (key, value) => typeof value === "bigint" ? value.toString() : value)
+      }
+      return value
+    }, 
+    2
+  );
 };
 
 const closingPositionDiffTolerance = 0.0001;

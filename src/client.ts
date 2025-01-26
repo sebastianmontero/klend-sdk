@@ -20,8 +20,8 @@ import { Reserve } from './idl_codegen/accounts';
 import { buildAndSendTxnWithLogs, buildVersionedTransaction } from './utils/instruction';
 import { VanillaObligation } from './utils/ObligationType';
 import { parseTokenSymbol } from './classes/utils';
-import { Env, initEnv } from '../tests/runner/setup_utils';
-import { initializeFarmsForReserve } from '../tests/runner/farms/farms_operations';
+// import { Env, initEnv } from '../tests/runner/setup_utils';
+// import { initializeFarmsForReserve } from '../tests/runner/farms/farms_operations';
 
 const STAGING_LENDING_MARKET = new PublicKey('6WVSwDQXrBZeQVnu6hpnsRZhodaJTZBUaC334SiiBKdb');
 const MAINNET_LENDING_MARKET = new PublicKey('7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF');
@@ -32,10 +32,31 @@ async function main() {
   commands.name('klend-cli').description('CLI to interact with the klend program');
 
   commands
+    .command('print-market')
+    .option(`--rpc <string>`, 'The rpc url')
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
+    .action(async ({ rpc, cluster }) => {
+      const connection = new Connection(rpc, {});
+      const kaminoMarket = await getMarket(connection, getProgramId(cluster));
+      await kaminoMarket.reload();
+      console.log("Address:", kaminoMarket.address);
+      console.log("Lending Market:\n", toJson(kaminoMarket.state));
+      console.log(`Reserves (Num: ${kaminoMarket.reserves.size}):\n`);
+      for (const reserve of kaminoMarket.reserves) {
+        console.log(toJson(reserve));
+      }
+
+      console.log(`Reserves Active(Num: ${kaminoMarket.reservesActive.size}):\n`);
+      for (const reserve of kaminoMarket.reservesActive) {
+        console.log(toJson(reserve));
+      }
+    });
+
+  commands
     .command('print-borrow-rate')
     .option(`--url <string>`, 'The admin keypair file')
     .option(`--token <string>`, 'The token symbol')
-    .option(`--cluster <string>`, 'staging or mainnet-beta')
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
     .action(async ({ url, token, cluster }) => {
       const connection = new Connection(url, {});
 
@@ -62,14 +83,14 @@ async function main() {
     .action(async ({ rpc }) => {
       const connection = new Connection(rpc, {});
       for await (const lendingMarketAccount of getAllLendingMarketAccounts(connection)) {
-        console.log(toJson(lendingMarketAccount.toJSON()));
+        console.log(toJson(lendingMarketAccount));
       }
     });
 
   commands
     .command('print-obligation')
     .option(`--rpc <string>`, 'The rpc url')
-    .option(`--cluster <string>`, 'staging or mainnet-beta')
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
     .option(`--obligation <string>`, 'The obligation id')
     .action(async ({ rpc, cluster, obligation }) => {
       const connection = new Connection(rpc, {});
@@ -91,11 +112,13 @@ async function main() {
   commands
     .command('print-reserve')
     .option(`--url <string>`, 'The admin keypair file')
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
     .option(`--reserve <string>`, 'Reserve address')
     .option(`--symbol <string>`, 'Symbol (optional)')
-    .action(async ({ url, reserve, symbol }) => {
+    .action(async ({ url, cluster, reserve, symbol }) => {
       const connection = new Connection(url, {});
-      await printReserve(connection, reserve, symbol);
+      const programId = getProgramId(cluster);
+      await printReserve(connection, programId, reserve, symbol);
     });
 
   commands
@@ -104,21 +127,23 @@ async function main() {
     .action(async ({ rpc }) => {
       const connection = new Connection(rpc, {});
       for await (const reserveAccount of getAllReserveAccounts(connection)) {
-        console.log(toJson(reserveAccount.toJSON()));
+        console.log(toJson(reserveAccount));
       }
     });
 
   commands
     .command('deposit')
     .option(`--url <string>`, 'Custom RPC URL')
-    .option(`--owner <string>`, 'Custom RPC URL')
-    .option(`--token <string>`, 'Custom RPC URL')
-    .option(`--amount <string>`, 'Custom RPC URL')
-    .action(async ({ url, owner, token, amount }) => {
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
+    .option(`--owner <string>`, 'wallet file')
+    .option(`--token <string>`, 'Token mint address')
+    .option(`--amount <string>`, 'Amount to deposit')
+    .action(async ({ url, cluster, owner, token, amount }) => {
       const wallet = parseKeypairFile(owner);
       const connection = new Connection(url, {});
       const depositAmount = new BN(amount);
-      await deposit(connection, wallet, token, depositAmount);
+      const programId = getProgramId(cluster);
+      await deposit(connection, programId, wallet, token, depositAmount);
     });
 
   commands
@@ -300,17 +325,16 @@ async function main() {
   await commands.parseAsync();
 }
 
-async function deposit(connection: Connection, wallet: Keypair, token: string, depositAmount: BN) {
-  const programId = getProgramId('staging');
+async function deposit(connection: Connection, programId: PublicKey, wallet: Keypair, token: string, depositAmount: BN) {
   const kaminoMarket = await getMarket(connection, programId);
   const kaminoAction = await KaminoAction.buildDepositTxns(
     kaminoMarket,
     depositAmount,
     kaminoMarket.getReserveBySymbol(token)!.getLiquidityMint(),
     wallet.publicKey,
-    new VanillaObligation(STAGING_LENDING_MARKET)
+    new VanillaObligation(programId)
   );
-  console.log('User obligation', kaminoAction.obligation!.obligationAddress.toString());
+  console.log('User obligation', kaminoAction.obligation?.obligationAddress.toString());
 
   const tx = await buildVersionedTransaction(connection, wallet.publicKey, KaminoAction.actionToIxs(kaminoAction));
 
@@ -381,14 +405,13 @@ async function repay(connection: Connection, wallet: Keypair, token: string, bor
   await buildAndSendTxnWithLogs(connection, tx, wallet, []);
 }
 
-async function printReserve(connection: Connection, reserve?: string, symbol?: string) {
-  const programId = getProgramId('staging');
+async function printReserve(connection: Connection, programId: PublicKey, reserve?: string, symbol?: string) {
   const kaminoMarket = await getMarket(connection, programId);
   const result = reserve
     ? kaminoMarket.getReserveByAddress(new PublicKey(reserve))
     : kaminoMarket.getReserveBySymbol(symbol!);
-  console.log(result);
-  console.log(result?.stats?.reserveDepositLimit.toString());
+  console.log(toJson(result));
+  // console.log(result?.stats?.reserveDepositLimit.toString());
 }
 
 async function initFarmsForReserveCommand(
