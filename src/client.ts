@@ -20,6 +20,7 @@ import { Reserve } from './idl_codegen/accounts';
 import { buildAndSendTxnWithLogs, buildVersionedTransaction } from './utils/instruction';
 import { VanillaObligation } from './utils/ObligationType';
 import { parseTokenSymbol } from './classes/utils';
+import {  Scope } from '@kamino-finance/scope-sdk';
 // import { Env, initEnv } from '../tests/runner/setup_utils';
 // import { initializeFarmsForReserve } from '../tests/runner/farms/farms_operations';
 
@@ -97,6 +98,19 @@ async function main() {
       const kaminoMarket = await getMarket(connection, cluster);
       const kaminoObligation = await KaminoObligation.load(kaminoMarket, new PublicKey(obligation));
       console.log(toJson(kaminoObligation?.refreshedStats));
+    });
+
+    commands
+    .command('print-oracle-prices')
+    .option(`--rpc <string>`, 'The rpc url')
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
+    .option(`--price-oracle-account <string>`, 'The account for the price oracle')
+    .action(async ({ rpc, cluster, priceOracleAccount }) => {
+      const connection = new Connection(rpc, {});
+      const oraclePrices = await new Scope(cluster, connection).getOraclePrices({
+        prices: new PublicKey(priceOracleAccount),
+      });
+      console.log(toJson(oraclePrices));
     });
 
   commands
