@@ -7,6 +7,7 @@ import {
   PROGRAM_ID,
   STAGING_PROGRAM_ID,
   getAllUserMetadatasWithFilter,
+  getUserMetadata,
   getProgramId,
   toJson,
   getAllObligationAccounts,
@@ -95,9 +96,20 @@ async function main() {
     .option(`--obligation <string>`, 'The obligation id')
     .action(async ({ rpc, cluster, obligation }) => {
       const connection = new Connection(rpc, {});
-      const kaminoMarket = await getMarket(connection, cluster);
+      const programId = getProgramId(cluster);
+      const kaminoMarket = await getMarket(connection, programId);
       const kaminoObligation = await KaminoObligation.load(kaminoMarket, new PublicKey(obligation));
-      console.log(toJson(kaminoObligation?.refreshedStats));
+      console.log(toJson(kaminoObligation));
+    });
+
+    commands
+    .command('print-all-obligation-accounts')
+    .option(`--rpc <string>`, 'The RPC URL')
+    .action(async ({ rpc }) => {
+      const connection = new Connection(rpc, {});
+      for await (const obligationAccount of getAllObligationAccounts(connection)) {
+        console.log(toJson(obligationAccount.toJSON()));
+      }
     });
 
     commands
@@ -113,16 +125,18 @@ async function main() {
       console.log(toJson(oraclePrices));
     });
 
-  commands
-    .command('print-all-obligation-accounts')
-    .option(`--rpc <string>`, 'The RPC URL')
-    .action(async ({ rpc }) => {
+    commands
+    .command('print-user-metadata')
+    .option(`--rpc <string>`, 'The rpc url')
+    .option(`--cluster <string>`, 'staging or mainnet-beta', 'mainnet-beta')
+    .option(`--user <string>`, 'The users public key')
+    .action(async ({ rpc, cluster, user }) => {
       const connection = new Connection(rpc, {});
-      for await (const obligationAccount of getAllObligationAccounts(connection)) {
-        console.log(toJson(obligationAccount.toJSON()));
-      }
+      const programId = getProgramId(cluster);
+      const userMetadata = await getUserMetadata(connection, new PublicKey(user), programId);
+      console.log(toJson(userMetadata));
     });
-
+    
   commands
     .command('print-reserve')
     .option(`--url <string>`, 'The admin keypair file')

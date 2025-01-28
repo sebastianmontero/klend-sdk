@@ -23,6 +23,7 @@ import {
 } from '../lib';
 import { farmsId } from '@kamino-finance/farms-sdk';
 import { KaminoReserve } from '../classes/reserve';
+import { BASE_SEED_USER_METADATA } from './seeds';
 
 export type KaminoUserMetadata = {
   address: PublicKey;
@@ -365,6 +366,26 @@ const BASE_SEED_USER_STATE = Buffer.from('user');
 
 const getPdaFarmsUserState = (farm: PublicKey, obligation: PublicKey) =>
   PublicKey.findProgramAddressSync([BASE_SEED_USER_STATE, farm.toBytes(), obligation.toBytes()], farmsId)[0];
+
+const getUserMetadataPda = (user: PublicKey, programId: PublicKey) =>
+  PublicKey.findProgramAddressSync([Buffer.from(BASE_SEED_USER_METADATA), user.toBytes()], programId)[0];
+
+
+export async function getUserMetadata(
+  connection: Connection,
+  user: PublicKey,
+  programId: PublicKey
+): Promise<KaminoUserMetadata> {
+  const userMetadataPDA = getUserMetadataPda(user, programId);
+
+  const userMetadata = await connection.getAccountInfo(userMetadataPDA);
+  if (userMetadata === null) {
+    throw new Error('User metadata not found');
+  }
+  const userMetadataAccount = UserMetadata.decode(userMetadata.data);
+  
+  return { address: userMetadataPDA, state: userMetadataAccount };
+}
 
 export async function getAllUserMetadatasWithFilter(
   connection: Connection,
